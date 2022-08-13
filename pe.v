@@ -19,8 +19,8 @@ fn new_object(mut file os.File) ?Object {
 		file: file
 	}
 
-	file.read_struct_at(mut o.dos_header, 0) ?
-	file.read_struct_at(mut o.nt_header, o.dos_header.lfanew) ?
+	file.read_struct_at(mut o.dos_header, 0)?
+	file.read_struct_at(mut o.nt_header, o.dos_header.lfanew)?
 
 	// Check whether it is a valid PE file
 	dos := o.dos_header
@@ -43,9 +43,9 @@ fn new_object(mut file os.File) ?Object {
 			(sizeof(NTHeader) - sizeof(OptionalHeader))
 
 		// Seek and read header
-		file.seek(offset) ?
+		file.seek(offset, .start)?
 		for mut section in o.sections {
-			file.read_struct(mut section.header) ?
+			file.read_struct(mut section.header)?
 		}
 
 		for mut section in o.sections {
@@ -54,9 +54,11 @@ fn new_object(mut file os.File) ?Object {
 				file_size, virtual_size := section.file_size(), section.virtual_size()
 				len := if file_size > virtual_size { file_size } else { virtual_size }
 
-				section.data = []byte{len: int(len)}
+				section.data = []u8{len: int(len)}
 
-				file.read_from(section.header.pointer_to_raw_data, mut section.data[..section.file_size()]) ?
+				mut file_section := section.data[..section.file_size()]
+
+				file.read_from(section.header.pointer_to_raw_data, mut &file_section)?
 			}
 		}
 	}
@@ -65,18 +67,18 @@ fn new_object(mut file os.File) ?Object {
 		u32(0), u32(max_data_dirs))
 	mut dd_count := o.nt_header.optional.number_of_rva_and_sizes
 	if dd_count > 0 {
-		descs := []DataDirectoryDescriptor{len: int(dd_count)}
+		mut descs := []DataDirectoryDescriptor{len: int(dd_count)}
 
 		offset := o.dos_header.lfanew + __offsetof(NTHeader, optional) + sizeof(OptionalHeader)
 
 		// seek and read
-		file.seek(offset) ?
+		file.seek(offset, .start)?
 		for i := 0; i < dd_count; i++ {
-			file.read_struct(mut descs[i]) ?
+			file.read_struct(mut descs[i])?
 		}
 
 		for i := 0; i < dd_count; i++ {
-			desc := &descs[i]
+			desc := descs[i]
 			id := DataDirectoryId(i)
 
 			if desc.rva == 0 || desc.size == 0 {
@@ -117,7 +119,7 @@ fn (o Object) rva_to_file_offset(rva u64) ?u64 {
 		return rva
 	}
 
-	section := o.section_from_rva(rva) ?
+	section := o.section_from_rva(rva)?
 	return section.file_addr() + rva - section.rva()
 }
 
@@ -126,14 +128,14 @@ fn (o Object) section_alignment() u64 {
 }
 
 fn (o Object) rva_data<T>(rva u64) ?T {
-	mut section := o.section_from_rva(rva) ?
+	mut section := o.section_from_rva(rva)?
 	return section.rva_data<T>(rva, o.section_alignment())
 }
 
 fn (o Object) directory<T>() ?T {
 	for dir in o.data_directories {
-		if dir is T {
-			return dir
+		return dir.@is<T>() or {
+			continue
 		}
 	}
 

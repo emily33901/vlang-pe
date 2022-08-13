@@ -2,7 +2,7 @@ module main
 
 struct SectionHeader {
 mut:
-	name                 [8]byte
+	name                 [8]u8
 	virtual_size         u32
 	virtual_addr         u32
 	size_of_raw_data     u32
@@ -72,7 +72,7 @@ fn (mut s Section) rva_data<T>(rva u64, section_alignment u64) ?T {
 	vdata := s.virtual_data(section_alignment)
 
 	addr := unsafe {
-		&byte(u64(vdata.data) + va)
+		&u8(u64(vdata.data) + va)
 	}
 
 	$if T is string {
